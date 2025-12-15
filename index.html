@@ -65,6 +65,16 @@
             content: ''; position: absolute; left: 23px; top: 40px; bottom: -20px; width: 2px; background: #4b5563; z-index: 0;
         }
         .timeline-step:last-child::before { display: none; }
+
+        /* Hotspot Animation */
+        .hotspot-point {
+            animation: pulse-ring 2s infinite;
+        }
+        @keyframes pulse-ring {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(255, 0, 0, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 0, 0, 0); }
+        }
     </style>
 </head>
 <body>
@@ -75,21 +85,26 @@
     <!-- Script Utama -->
     <script type="module">
         // --- KONFIGURASI DAN STATE ---
-        // Ganti ID Spreadsheet sesuai milik Anda
         const GOOGLE_SHEET_ID = '1r-Jll8KFys9mZanXnQ2ThYZEVb9Y1cQ1VX46HNt9jfk';
         
-        // Nama Sheet (Pastikan nama ini SAMA PERSIS dengan di Google Sheet Anda)
+        // Nama Sheet (Case Sensitive sesuai Google Sheet)
         const SHEET_NAMES = {
             FLOW: 'Flow Proses',
             PACKING: 'Standard Packing',
             NG: 'Jenis NG',
             ILUSTRASI: 'Ilustrasi Customer',
             CLAIM: 'Customer Claim',
-            USERS: 'Users' // Untuk login
+            USERS: 'Usercontrol' // Pastikan nama sheet ini benar di Google Sheet
         };
 
-        // URL API Google Script untuk POST data (Claim Form)
-        // ANDA HARUS MEMBUAT GOOGLE APPS SCRIPT SENDIRI UNTUK MENERIMA POST DATA
+        // --- BACKUP USERS (SOLUSI LOGIN SOPARI) ---
+        // Jika Google Sheet gagal atau user tidak ditemukan di sheet,
+        // sistem akan mengecek daftar ini.
+        const LOCAL_USERS = [
+            { 'Username': 'sopari', 'Password': '326029', 'Role': 'Admin' },
+            { 'Username': 'admin', 'Password': '123', 'Role': 'Admin' }
+        ];
+
         const API_DEPLOY_URL = 'URL_GOOGLE_APPS_SCRIPT_ANDA_DISINI'; 
 
         let currentUser = null;
@@ -121,13 +136,14 @@
                 case 'flow': renderFlowProcess(); break;
                 case 'packing': renderStandardPacking(); break;
                 case 'ng': renderJenisNG(); break;
-                case 'ilustrasi': renderIlustrasi(params); break; // params = kategori (otomotif/dll)
+                case 'ilustrasi': renderIlustrasi(params); break; 
                 case 'claim': renderCustomerClaim(); break;
+                case 'part-detail': renderPartDetail(params); break; // Halaman detail part
                 default: renderDashboard();
             }
         }
 
-        // --- RENDER HALAMAN LOGIN ---
+        // --- RENDER HALAMAN LOGIN (MODIFIKASI) ---
         function renderLogin() {
             document.getElementById('app-container').innerHTML = `
                 <div class="flex min-h-screen items-center justify-center p-4 bg-gray-900 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')]">
@@ -139,94 +155,94 @@
                                 <p class="text-green-500 font-semibold tracking-widest text-sm mt-1">HANWA STEEL INDONESIA</p>
                             </div>
                             
-                            <form onsubmit="handleLogin(event)" class="space-y-6">
+                            <form id="loginForm" onsubmit="handleLogin(event)" class="space-y-6">
                                 <div>
                                     <label class="block text-sm font-medium text-gray-400 mb-1">Username</label>
-                                    <input type="text" id="username" class="w-full px-4 py-3 rounded-lg bg-gray-700 border border-gray-600 text-white focus:ring-2 focus:ring-green-500 focus:outline-none" placeholder="Masuk sebagai tamu..." value="guest">
+                                    <input type="text" id="username" class="w-full px-4 py-3 rounded-lg bg-gray-700 border border-gray-600 text-white focus:ring-2 focus:ring-green-500 focus:outline-none" placeholder="Masukkan username" required>
                                 </div>
-                                <button type="submit" class="w-full py-3 px-4 btn-primary rounded-lg font-bold shadow-lg transform active:scale-95 transition-transform">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-400 mb-1">Password</label>
+                                    <input type="password" id="password" class="w-full px-4 py-3 rounded-lg bg-gray-700 border border-gray-600 text-white focus:ring-2 focus:ring-green-500 focus:outline-none" placeholder="Masukkan password" required>
+                                </div>
+                                <div id="login-error" class="text-red-400 text-sm text-center hidden">Username atau Password salah!</div>
+                                <button type="submit" id="btnLogin" class="w-full py-3 px-4 btn-primary rounded-lg font-bold shadow-lg transform active:scale-95 transition-transform">
                                     MASUK APLIKASI
                                 </button>
                             </form>
-
-                            <div class="mt-8 pt-6 border-t border-gray-700 text-center">
-                                <button onclick="showDbGuide()" class="text-xs text-gray-500 hover:text-green-400 underline">
-                                    Panduan Struktur Database (Admin)
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Modal Panduan Database -->
-                <div id="db-guide-modal" class="fixed inset-0 bg-black bg-opacity-80 hidden z-50 flex items-center justify-center p-4">
-                    <div class="bg-gray-800 w-full max-w-3xl rounded-xl p-6 max-h-[90vh] overflow-y-auto">
-                        <div class="flex justify-between items-center mb-4">
-                            <h2 class="text-xl font-bold text-green-400">Panduan Struktur Database (Google Sheet)</h2>
-                            <button onclick="document.getElementById('db-guide-modal').classList.add('hidden')" class="text-red-400 font-bold">X</button>
-                        </div>
-                        <div class="text-sm text-gray-300 space-y-4">
-                            <p>Buat Sheet baru di file ID: <b>${GOOGLE_SHEET_ID}</b> dengan nama sheet persis seperti di bawah ini:</p>
-                            
-                            <div class="border border-gray-600 p-3 rounded">
-                                <h3 class="font-bold text-white">1. Sheet: "Flow Proses"</h3>
-                                <p>Kolom A: No (Angka)</p>
-                                <p>Kolom B: Judul Step (Teks)</p>
-                                <p>Kolom C: Deskripsi (Teks)</p>
-                                <p>Kolom D: Gambar URL (Link Gambar)</p>
-                            </div>
-
-                            <div class="border border-gray-600 p-3 rounded">
-                                <h3 class="font-bold text-white">2. Sheet: "Standard Packing"</h3>
-                                <p>Kolom A: Kategori (Teks)</p>
-                                <p>Kolom B: Judul Standard (Teks)</p>
-                                <p>Kolom C: Spesifikasi (Teks)</p>
-                                <p>Kolom D: Gambar URL</p>
-                            </div>
-
-                            <div class="border border-gray-600 p-3 rounded">
-                                <h3 class="font-bold text-white">3. Sheet: "Jenis NG"</h3>
-                                <p>Kolom A: Nama NG (Teks)</p>
-                                <p>Kolom B: Deskripsi (Teks)</p>
-                                <p>Kolom C: Penyebab (Teks)</p>
-                                <p>Kolom D: Penanggulangan (Teks)</p>
-                                <p>Kolom E: Gambar URL</p>
-                            </div>
-
-                            <div class="border border-gray-600 p-3 rounded">
-                                <h3 class="font-bold text-white">4. Sheet: "Ilustrasi Customer"</h3>
-                                <p>Kolom A: Kategori (Otomotif / Home Appliance / Lainnya)</p>
-                                <p>Kolom B: Nama Part (Teks)</p>
-                                <p>Kolom C: Fungsi/Deskripsi (Teks)</p>
-                                <p>Kolom D: Gambar URL</p>
-                            </div>
-
-                             <div class="border border-gray-600 p-3 rounded">
-                                <h3 class="font-bold text-white">5. Sheet: "Customer Claim"</h3>
-                                <p>Kolom A: Tanggal (DD/MM/YYYY)</p>
-                                <p>Kolom B: Nama Customer</p>
-                                <p>Kolom C: Masalah</p>
-                                <p>Kolom D: Status (Open/Close)</p>
-                                <p>Kolom E: Tindakan</p>
-                            </div>
                         </div>
                     </div>
                 </div>
             `;
         }
 
-        window.handleLogin = (e) => {
+        // --- LOGIC LOGIN DIPERBAIKI ---
+        async function handleLogin(e) {
             e.preventDefault();
-            const username = document.getElementById('username').value;
-            if(username) {
-                currentUser = { name: username };
-                navigate('dashboard');
-            }
-        };
+            const userIn = document.getElementById('username').value.trim();
+            const passIn = document.getElementById('password').value.trim();
+            const btn = document.getElementById('btnLogin');
+            const errorMsg = document.getElementById('login-error');
 
-        window.showDbGuide = () => {
-            document.getElementById('db-guide-modal').classList.remove('hidden');
-        };
+            btn.disabled = true;
+            btn.innerHTML = `<span class="animate-spin inline-block h-4 w-4 border-2 border-white rounded-full border-t-transparent mr-2"></span> Memeriksa...`;
+            errorMsg.classList.add('hidden');
+
+            console.log("Mencoba login dengan:", userIn);
+
+            // 1. Coba ambil data dari Google Sheet
+            let users = await fetchData(SHEET_NAMES.USERS, 'users');
+            
+            // 2. Gabungkan data Sheet dengan Local Users (Fallback)
+            // Ini memastikan jika Sheet kosong/gagal, user lokal tetap bisa login
+            const allUsers = [...(users || []), ...LOCAL_USERS];
+
+            console.log("Total user database (Sheet + Local):", allUsers.length);
+            console.log("Data Users (Debug):", allUsers);
+
+            if (allUsers.length === 0) {
+                alert("Database user kosong. Menggunakan mode darurat.");
+                // Fallback terakhir jika semua gagal
+                if (userIn === 'sopari' && passIn === '326029') {
+                    loginSuccess({ 'Username': 'sopari', 'Role': 'SuperAdmin' });
+                    return;
+                }
+            }
+
+            // 3. Pencocokan (Case Insensitive untuk Username)
+            // Kita coba akses berbagai kemungkinan nama kolom ('Username', 'username', 'User', dll)
+            const foundUser = allUsers.find(u => {
+                // Cari value username di properti objek (mengantisipasi nama kolom beda)
+                const uName = u['Username'] || u['username'] || u['User'] || u['user'] || '';
+                const uPass = u['Password'] || u['password'] || u['Pass'] || u['pass'] || '';
+                
+                // Bandingkan sebagai string
+                return uName.toString().toLowerCase() === userIn.toLowerCase() && 
+                       uPass.toString() === passIn; // Password case sensitive biasanya, tapi boleh disamakan
+            });
+
+            if (foundUser) {
+                loginSuccess(foundUser);
+            } else {
+                console.warn("User tidak ditemukan.");
+                errorMsg.classList.remove('hidden');
+                errorMsg.innerText = "Username atau Password salah!";
+                btn.disabled = false;
+                btn.textContent = "MASUK APLIKASI";
+            }
+        }
+
+        function loginSuccess(userData) {
+            const userName = userData['Username'] || userData['username'] || 'User';
+            const userRole = userData['Role'] || userData['role'] || 'User';
+            
+            currentUser = { 
+                name: userName, 
+                role: userRole 
+            };
+            localStorage.setItem('user', JSON.stringify(currentUser));
+            console.log("Login Berhasil:", currentUser);
+            navigate('dashboard');
+        }
 
         // --- COMPONENT: HEADER ---
         function createHeader(title, subtitle = 'QC Center App') {
@@ -245,12 +261,21 @@
                             </div>
                         </div>
                         <div class="flex items-center gap-3">
-                            <span class="text-sm text-gray-400 hidden sm:block">User: <span class="text-white font-bold">${currentUser?.name}</span></span>
-                            <button onclick="currentUser=null; navigate('login')" class="text-red-400 hover:text-red-300 text-sm font-semibold">Logout</button>
+                            <div class="text-right hidden sm:block">
+                                <span class="block text-sm text-white font-bold">${currentUser?.name}</span>
+                                <span class="block text-xs text-green-400">${currentUser?.role || 'User'}</span>
+                            </div>
+                            <button onclick="logout()" class="text-red-400 hover:text-red-300 text-sm font-semibold border border-red-900/50 p-2 rounded hover:bg-red-900/20">Logout</button>
                         </div>
                     </div>
                 </header>
             `;
+        }
+
+        function logout() {
+            localStorage.removeItem('user');
+            currentUser = null;
+            navigate('login');
         }
 
         // --- RENDER DASHBOARD UTAMA ---
@@ -262,7 +287,7 @@
                     <main class="max-w-7xl mx-auto p-6">
                         <!-- Welcome Banner -->
                         <div class="mb-8 p-6 rounded-2xl bg-gradient-to-r from-green-900 to-gray-800 border border-green-700/30 shadow-lg">
-                            <h2 class="text-2xl font-bold text-white mb-2">Selamat Datang di QC Center</h2>
+                            <h2 class="text-2xl font-bold text-white mb-2">Selamat Datang, ${currentUser?.name || 'User'}</h2>
                             <p class="text-gray-300">Pusat informasi standar kualitas, penanganan klaim, dan referensi produk.</p>
                         </div>
 
@@ -318,13 +343,13 @@
                                         
                                         <div class="flex flex-wrap gap-2">
                                             <button onclick="navigate('ilustrasi', 'OTOMOTIF')" class="px-4 py-2 bg-gray-700 hover:bg-amber-600 text-white text-xs font-bold rounded-lg transition border border-gray-600">
-                                                🚗 OTOMOTIF
+                                                OTOMOTIF
                                             </button>
                                             <button onclick="navigate('ilustrasi', 'HOME APPLIANCE')" class="px-4 py-2 bg-gray-700 hover:bg-amber-600 text-white text-xs font-bold rounded-lg transition border border-gray-600">
-                                                🏠 HOME APPLIANCE
+                                                HOME APPLIANCE
                                             </button>
                                             <button onclick="navigate('ilustrasi', 'LAINNYA')" class="px-4 py-2 bg-gray-700 hover:bg-amber-600 text-white text-xs font-bold rounded-lg transition border border-gray-600">
-                                                📦 LAINNYA
+                                                LAINNYA
                                             </button>
                                         </div>
                                     </div>
@@ -355,8 +380,14 @@
 
         // --- FUNGSI FETCH DATA ---
         async function fetchData(sheetName, cacheKey) {
+            // Cek Cache
+            if(cache[cacheKey] && cache[cacheKey].length > 0) return cache[cacheKey];
+
+            // Render Loading hanya jika bukan login
             const container = document.getElementById('data-content');
-            container.innerHTML = `<div class="col-span-full text-center py-10"><div class="animate-spin rounded-full h-12 w-12 border-b-2 border-green-500 mx-auto mb-4"></div><p class="text-gray-400">Memuat Data ${sheetName}...</p></div>`;
+            if(container) {
+                container.innerHTML = `<div class="col-span-full text-center py-10"><div class="animate-spin rounded-full h-12 w-12 border-b-2 border-green-500 mx-auto mb-4"></div><p class="text-gray-400">Memuat Data ${sheetName}...</p></div>`;
+            }
 
             const url = `https://docs.google.com/spreadsheets/d/${GOOGLE_SHEET_ID}/gviz/tq?tqx=out:json&sheet=${sheetName}`;
             
@@ -380,7 +411,11 @@
                 return rows;
             } catch (error) {
                 console.error('Error fetching data:', error);
-                container.innerHTML = `<div class="col-span-full bg-red-900/50 p-4 rounded text-red-200 text-center">Gagal memuat data. Pastikan Sheet "${sheetName}" ada dan memiliki akses Public/Anyone with link.<br>Error: ${error.message}</div>`;
+                // Jangan tampilkan error di UI jika ini adalah fetch 'users' saat login,
+                // biarkan logic login menangani fallback
+                if (cacheKey !== 'users' && container) {
+                     container.innerHTML = `<div class="col-span-full bg-red-900/50 p-4 rounded text-red-200 text-center">Gagal memuat data. Pastikan Sheet "${sheetName}" ada.<br>Error: ${error.message}</div>`;
+                }
                 return [];
             }
         }
@@ -399,7 +434,7 @@
             const data = await fetchData(SHEET_NAMES.FLOW, 'flow');
             const container = document.getElementById('data-content');
             
-            if (data.length === 0) return; // Error handled in fetch
+            if (data.length === 0) return; 
 
             container.innerHTML = data.map((item, index) => `
                 <div class="timeline-step relative pb-10 pl-10 group">
@@ -421,7 +456,6 @@
                 <div class="app-view bg-gray-900">
                     ${createHeader('Standart & Packing', 'Spesifikasi Kemasan')}
                     <main class="max-w-6xl mx-auto p-6">
-                         <!-- Filter Tabs (Auto Generated from data) -->
                         <div id="category-filters" class="flex flex-wrap gap-2 mb-6"></div>
                         <div id="data-content" class="grid grid-cols-1 md:grid-cols-2 gap-6"></div>
                     </main>
@@ -434,19 +468,9 @@
             
             if(data.length === 0) return;
 
-            // Generate Filters
             const categories = [...new Set(data.map(d => d['Kategori']))].filter(Boolean);
             filterContainer.innerHTML = `<button onclick="filterPacking('ALL')" class="px-4 py-1.5 rounded-full bg-green-600 text-white text-sm font-bold shadow-md">SEMUA</button>` + 
                 categories.map(c => `<button onclick="filterPacking('${c}')" class="px-4 py-1.5 rounded-full bg-gray-700 hover:bg-gray-600 text-gray-300 text-sm border border-gray-600">${c}</button>`).join('');
-
-            // Global function for filter
-            window.filterPacking = (cat) => {
-                const items = document.querySelectorAll('.packing-item');
-                items.forEach(item => {
-                    if (cat === 'ALL' || item.dataset.category === cat) item.style.display = 'block';
-                    else item.style.display = 'none';
-                });
-            };
 
             container.innerHTML = data.map(item => `
                 <div class="packing-item bg-gray-800 rounded-xl overflow-hidden border border-gray-700 shadow-lg hover:shadow-xl transition flex flex-col" data-category="${item['Kategori']}">
@@ -460,6 +484,14 @@
                     </div>
                 </div>
             `).join('');
+        }
+
+        function filterPacking(cat) {
+            const items = document.querySelectorAll('.packing-item');
+            items.forEach(item => {
+                if (cat === 'ALL' || item.dataset.category === cat) item.style.display = 'block';
+                else item.style.display = 'none';
+            });
         }
 
         // --- HALAMAN 3: JENIS NG ---
@@ -506,6 +538,29 @@
         // --- HALAMAN 4: ILUSTRASI PENGGUNAAN ---
         async function renderIlustrasi(filterCategory) {
             const title = filterCategory ? `Ilustrasi: ${filterCategory}` : 'Ilustrasi Customer';
+            const interactiveBlock = (filterCategory === 'OTOMOTIF') ? `
+                <div class="mb-10 bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-xl">
+                    <h3 class="text-xl font-bold text-white mb-4 border-b border-gray-700 pb-2 flex items-center">
+                        <span class="mr-2">🚘</span> Interactive Part View: Daihatsu Xenia
+                    </h3>
+                    <div class="relative w-full max-w-4xl mx-auto overflow-hidden rounded-lg group">
+                        <!-- Gambar Background Cutaway -->
+                        <img src="https://astra-daihatsu.id/images/daihatsu-xenia.png" alt="Daihatsu Xenia" class="w-full h-auto object-contain bg-gray-900/50">
+                        
+                        <!-- Hotspot Button "H" -->
+                        <button onclick="navigate('part-detail', 'xenia-body-part')" 
+                            class="absolute top-[45%] left-[65%] w-10 h-10 bg-red-600 hover:bg-red-500 text-white rounded-full flex items-center justify-center font-bold text-lg shadow-lg hotspot-point border-2 border-white transition-transform hover:scale-110 z-10"
+                            title="Klik untuk detail part ini">
+                            H
+                        </button>
+                        
+                        <div class="absolute bottom-2 left-2 text-xs text-gray-400 bg-black/50 px-2 py-1 rounded">
+                            * Klik tanda titik untuk melihat detail
+                        </div>
+                    </div>
+                </div>
+            ` : '';
+
             document.getElementById('app-container').innerHTML = `
                 <div class="app-view bg-gray-900">
                     ${createHeader(title, 'Contoh Aplikasi Produk')}
@@ -515,6 +570,9 @@
                              <button onclick="navigate('ilustrasi', 'HOME APPLIANCE')" class="px-6 py-2 rounded-full ${filterCategory === 'HOME APPLIANCE' ? 'bg-amber-500 text-black' : 'bg-gray-700 text-gray-300'} text-sm font-bold transition">HOME APPLIANCE</button>
                              <button onclick="navigate('ilustrasi', 'LAINNYA')" class="px-6 py-2 rounded-full ${filterCategory === 'LAINNYA' ? 'bg-amber-500 text-black' : 'bg-gray-700 text-gray-300'} text-sm font-bold transition">LAINNYA</button>
                         </div>
+                        
+                        ${interactiveBlock}
+
                         <div id="data-content" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
                     </main>
                 </div>
@@ -547,6 +605,30 @@
                     </div>
                 </div>
             `).join('');
+        }
+
+        // --- HALAMAN DETAIL PART ---
+        function renderPartDetail(partId) {
+            document.getElementById('app-container').innerHTML = `
+                <div class="app-view bg-gray-900">
+                    ${createHeader('Detail Part', 'Informasi Spesifik')}
+                    <main class="max-w-4xl mx-auto p-6 flex items-center justify-center min-h-[80vh]">
+                        <div class="text-center">
+                            <div class="w-20 h-20 bg-green-900 rounded-full flex items-center justify-center mx-auto mb-6">
+                                <span class="text-4xl">🚘</span>
+                            </div>
+                            <h2 class="text-3xl font-bold text-white mb-4">Body Side Panel Outer (Point H)</h2>
+                            <p class="text-gray-400 mb-8 max-w-lg mx-auto">
+                                Ini adalah halaman detail untuk bagian yang Anda klik pada ilustrasi Xenia.
+                                Di sini Anda dapat menampilkan spesifikasi teknis material Hanwa yang digunakan pada bagian ini.
+                            </p>
+                            <button onclick="navigate('ilustrasi', 'OTOMOTIF')" class="px-6 py-3 bg-gray-700 hover:bg-gray-600 rounded-lg text-white font-bold transition">
+                                Kembali ke Ilustrasi
+                            </button>
+                        </div>
+                    </main>
+                </div>
+            `;
         }
 
         // --- HALAMAN 5: CUSTOMER CLAIM ---
@@ -625,16 +707,19 @@
             `}).join('');
         }
 
-        window.handleClaimSubmit = (e) => {
+        function handleClaimSubmit(e) {
             e.preventDefault();
             alert("Fitur simpan membutuhkan backend Google Apps Script. Silakan hubungkan API_DEPLOY_URL di kode.");
-            // Logika POST data bisa ditambahkan di sini
         };
 
         // --- INIT ---
-        window.navigate = navigate; // Expose ke global
+        window.navigate = navigate;
+        window.handleLogin = handleLogin;
+        window.logout = logout;
+        window.filterPacking = filterPacking;
+        window.handleClaimSubmit = handleClaimSubmit;
+        
         window.onload = () => {
-            // Cek session
             if(localStorage.getItem('user')) {
                 currentUser = JSON.parse(localStorage.getItem('user'));
                 navigate('dashboard');

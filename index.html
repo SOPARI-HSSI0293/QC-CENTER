@@ -68,12 +68,25 @@
 
         /* Hotspot Animation */
         .hotspot-point {
-            animation: pulse-ring 2s infinite;
+            animation: float 3s ease-in-out infinite;
         }
-        @keyframes pulse-ring {
-            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.7); }
-            70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(255, 0, 0, 0); }
-            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 0, 0, 0); }
+        @keyframes float {
+            0% { transform: translateY(0px); }
+            50% { transform: translateY(-5px); }
+            100% { transform: translateY(0px); }
+        }
+        
+        /* Tooltip Arrow */
+        .tooltip-arrow {
+            position: absolute;
+            bottom: -6px;
+            left: 50%;
+            transform: translateX(-50%) rotate(45deg);
+            width: 12px;
+            height: 12px;
+            background-color: rgba(0, 0, 0, 0.9);
+            border-right: 1px solid #22c55e;
+            border-bottom: 1px solid #22c55e;
         }
     </style>
 </head>
@@ -98,14 +111,10 @@
         };
 
         // --- BACKUP USERS (SOLUSI LOGIN SOPARI) ---
-        // Jika Google Sheet gagal atau user tidak ditemukan di sheet,
-        // sistem akan mengecek daftar ini.
         const LOCAL_USERS = [
             { 'Username': 'sopari', 'Password': '326029', 'Role': 'Admin' },
             { 'Username': 'admin', 'Password': '123', 'Role': 'Admin' }
         ];
-
-        const API_DEPLOY_URL = 'URL_GOOGLE_APPS_SCRIPT_ANDA_DISINI'; 
 
         let currentUser = null;
         
@@ -143,7 +152,7 @@
             }
         }
 
-        // --- RENDER HALAMAN LOGIN (MODIFIKASI) ---
+        // --- RENDER HALAMAN LOGIN ---
         function renderLogin() {
             document.getElementById('app-container').innerHTML = `
                 <div class="flex min-h-screen items-center justify-center p-4 bg-gray-900 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')]">
@@ -175,7 +184,7 @@
             `;
         }
 
-        // --- LOGIC LOGIN DIPERBAIKI ---
+        // --- LOGIC LOGIN ---
         async function handleLogin(e) {
             e.preventDefault();
             const userIn = document.getElementById('username').value.trim();
@@ -187,20 +196,13 @@
             btn.innerHTML = `<span class="animate-spin inline-block h-4 w-4 border-2 border-white rounded-full border-t-transparent mr-2"></span> Memeriksa...`;
             errorMsg.classList.add('hidden');
 
-            console.log("Mencoba login dengan:", userIn);
-
             // 1. Coba ambil data dari Google Sheet
             let users = await fetchData(SHEET_NAMES.USERS, 'users');
             
             // 2. Gabungkan data Sheet dengan Local Users (Fallback)
-            // Ini memastikan jika Sheet kosong/gagal, user lokal tetap bisa login
             const allUsers = [...(users || []), ...LOCAL_USERS];
 
-            console.log("Total user database (Sheet + Local):", allUsers.length);
-            console.log("Data Users (Debug):", allUsers);
-
             if (allUsers.length === 0) {
-                alert("Database user kosong. Menggunakan mode darurat.");
                 // Fallback terakhir jika semua gagal
                 if (userIn === 'sopari' && passIn === '326029') {
                     loginSuccess({ 'Username': 'sopari', 'Role': 'SuperAdmin' });
@@ -208,22 +210,17 @@
                 }
             }
 
-            // 3. Pencocokan (Case Insensitive untuk Username)
-            // Kita coba akses berbagai kemungkinan nama kolom ('Username', 'username', 'User', dll)
+            // 3. Pencocokan
             const foundUser = allUsers.find(u => {
-                // Cari value username di properti objek (mengantisipasi nama kolom beda)
                 const uName = u['Username'] || u['username'] || u['User'] || u['user'] || '';
                 const uPass = u['Password'] || u['password'] || u['Pass'] || u['pass'] || '';
-                
-                // Bandingkan sebagai string
                 return uName.toString().toLowerCase() === userIn.toLowerCase() && 
-                       uPass.toString() === passIn; // Password case sensitive biasanya, tapi boleh disamakan
+                       uPass.toString() === passIn;
             });
 
             if (foundUser) {
                 loginSuccess(foundUser);
             } else {
-                console.warn("User tidak ditemukan.");
                 errorMsg.classList.remove('hidden');
                 errorMsg.innerText = "Username atau Password salah!";
                 btn.disabled = false;
@@ -240,7 +237,6 @@
                 role: userRole 
             };
             localStorage.setItem('user', JSON.stringify(currentUser));
-            console.log("Login Berhasil:", currentUser);
             navigate('dashboard');
         }
 
@@ -411,8 +407,6 @@
                 return rows;
             } catch (error) {
                 console.error('Error fetching data:', error);
-                // Jangan tampilkan error di UI jika ini adalah fetch 'users' saat login,
-                // biarkan logic login menangani fallback
                 if (cacheKey !== 'users' && container) {
                      container.innerHTML = `<div class="col-span-full bg-red-900/50 p-4 rounded text-red-200 text-center">Gagal memuat data. Pastikan Sheet "${sheetName}" ada.<br>Error: ${error.message}</div>`;
                 }
@@ -535,32 +529,78 @@
             `).join('');
         }
 
-        // --- HALAMAN 4: ILUSTRASI PENGGUNAAN (MODIFIKASI) ---
+        // --- HALAMAN 4: ILUSTRASI PENGGUNAAN (DIMODIFIKASI) ---
         async function renderIlustrasi(filterCategory) {
             const title = filterCategory ? `Ilustrasi: ${filterCategory}` : 'Ilustrasi Customer';
+            
+            // --- DEFINISI TITIK HOTSPOT OTOMOTIF ---
+            // Koordinat disesuaikan agar menyebar di gambar mobil
+            const carHotspots = [
+                { 
+                    id: 'engine-hood', top: '45%', left: '20%', 
+                    label: 'Engine Hood', 
+                    desc: 'High Strength Steel (HSS) - Tahan Panas & Benturan' 
+                },
+                { 
+                    id: 'roof-panel', top: '15%', left: '50%', 
+                    label: 'Roof Panel', 
+                    desc: 'Galvannealed Steel - Anti Karat & Ringan' 
+                },
+                { 
+                    id: 'side-door', top: '45%', left: '45%', 
+                    label: 'Side Door Inner', 
+                    desc: 'Cold Rolled Steel (SPCC) - Formability Tinggi' 
+                },
+                { 
+                    id: 'seat-frame', top: '50%', left: '60%', 
+                    label: 'Seat Frame', 
+                    desc: 'High Tensile Steel - Kekuatan Struktur Tinggi' 
+                },
+                { 
+                    id: 'rear-body', top: '40%', left: '85%', 
+                    label: 'Rear Body / Tailgate', 
+                    desc: 'Electro-Galvanized Steel (SECC) - Finishing Halus' 
+                }
+            ];
+
+            // --- GENERATE HTML UNTUK TITIK HOTSPOT ---
+            const hotspotsHTML = carHotspots.map(point => `
+                <div class="absolute" style="top: ${point.top}; left: ${point.left}; transform: translate(-50%, -50%);">
+                    <button onclick="navigate('part-detail', '${point.id}')" class="group relative outline-none focus:outline-none">
+                        <!-- Logo Hanwa sebagai Point -->
+                        <div class="w-10 h-10 md:w-12 md:h-12 transition-transform transform hover:scale-110 hotspot-point drop-shadow-xl filter drop-shadow-[0_0_5px_rgba(255,255,255,0.5)]">
+                            <img src="https://deliveryhanwa.wordpress.com/wp-content/uploads/2025/11/logo-hanwa-2.png" 
+                                 alt="Point" 
+                                 class="w-full h-full object-contain">
+                        </div>
+                        
+                        <!-- CUSTOM TOOLTIP (Muncul saat Hover) -->
+                        <div class="hidden group-hover:block absolute bottom-full left-1/2 transform -translate-x-1/2 mb-3 w-48 bg-gray-900 border border-green-600 rounded-lg p-3 shadow-2xl z-20 transition-all opacity-0 group-hover:opacity-100 animate-fadeIn">
+                            <h4 class="text-green-400 font-bold text-xs uppercase mb-1 border-b border-gray-700 pb-1">${point.label}</h4>
+                            <p class="text-gray-300 text-[10px] leading-snug">${point.desc}</p>
+                            <!-- Panah Tooltip -->
+                            <div class="tooltip-arrow"></div>
+                        </div>
+                    </button>
+                </div>
+            `).join('');
+
             const interactiveBlock = (filterCategory === 'OTOMOTIF') ? `
                 <div class="mb-10 bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-xl">
-                    <h3 class="text-xl font-bold text-white mb-4 border-b border-gray-700 pb-2 flex items-center">
-                        <span class="mr-2">🚘</span> Interactive Part View: Daihatsu Xenia
+                    <h3 class="text-xl font-bold text-white mb-4 border-b border-gray-700 pb-2 flex items-center justify-between">
+                        <span class="flex items-center"><span class="mr-2">🚘</span> Interactive Part View</span>
+                        <span class="text-xs text-gray-400 font-normal">* Arahkan kursor ke logo untuk detail</span>
                     </h3>
-                    <div class="relative w-full max-w-4xl mx-auto overflow-hidden rounded-lg group">
-                        <!-- Gambar Background: Update URL sesuai request -->
+                    <div class="relative w-full max-w-4xl mx-auto overflow-hidden rounded-lg group border border-gray-700 bg-gray-900/50">
+                        <!-- Gambar Background Mobil -->
                         <img src="https://deliveryhanwa.wordpress.com/wp-content/uploads/2025/11/cutway-car-daihatsu-xenia.png" 
                              alt="Daihatsu Xenia Cutaway" 
-                             class="w-full h-auto object-contain bg-gray-900/50"
+                             class="w-full h-auto object-contain opacity-90 hover:opacity-100 transition-opacity"
                              onerror="this.src='https://via.placeholder.com/800x400?text=Gambar+Mobil+Tidak+Tersedia'">
                         
-                        <!-- Hotspot Button "H" -->
-                        <!-- Posisi disesuaikan kembali untuk gambar Cutaway (Samping) -->
-                        <button onclick="navigate('part-detail', 'xenia-body-part')" 
-                            class="absolute top-[45%] left-[65%] w-10 h-10 bg-red-600 hover:bg-red-500 text-white rounded-full flex items-center justify-center font-bold text-lg shadow-lg hotspot-point border-2 border-white transition-transform hover:scale-110 z-10"
-                            title="Klik untuk detail part ini">
-                            H
-                        </button>
+                        <!-- Render Semua Hotspot -->
+                        ${hotspotsHTML}
                         
-                        <div class="absolute bottom-2 left-2 text-xs text-gray-400 bg-black/50 px-2 py-1 rounded">
-                            * Klik tanda titik untuk melihat detail
-                        </div>
                     </div>
                 </div>
             ` : '';
@@ -590,7 +630,9 @@
             }
 
             if(data.length === 0) {
-                container.innerHTML = `<div class="col-span-full text-center py-10 text-gray-500">Tidak ada data ilustrasi untuk kategori ini.</div>`;
+                if(filterCategory !== 'OTOMOTIF') { // Jangan tampilkan pesan kosong jika Otomotif (karena sudah ada interaktif)
+                     container.innerHTML = `<div class="col-span-full text-center py-10 text-gray-500">Tidak ada data ilustrasi tambahan untuk kategori ini.</div>`;
+                }
                 return;
             }
 
@@ -613,20 +655,40 @@
 
         // --- HALAMAN DETAIL PART ---
         function renderPartDetail(partId) {
+            // Mapping ID ke Nama Part agar lebih dinamis
+            const partNames = {
+                'engine-hood': 'Engine Hood (Kap Mesin)',
+                'roof-panel': 'Roof Panel (Atap)',
+                'side-door': 'Side Door Inner',
+                'seat-frame': 'Seat Frame Mechanism',
+                'rear-body': 'Rear Body / Tailgate'
+            };
+            
+            const title = partNames[partId] || 'Detail Part';
+
             document.getElementById('app-container').innerHTML = `
                 <div class="app-view bg-gray-900">
-                    ${createHeader('Detail Part', 'Informasi Spesifik')}
-                    <main class="max-w-4xl mx-auto p-6 flex items-center justify-center min-h-[80vh]">
-                        <div class="text-center">
-                            <div class="w-20 h-20 bg-green-900 rounded-full flex items-center justify-center mx-auto mb-6">
-                                <span class="text-4xl">🚘</span>
+                    ${createHeader('Detail Part', 'Spesifikasi Teknis')}
+                    <main class="max-w-4xl mx-auto p-6 flex items-center justify-center min-h-[70vh]">
+                        <div class="text-center w-full bg-gray-800 p-8 rounded-2xl border border-gray-700 shadow-2xl">
+                            <div class="w-24 h-24 bg-gray-700/50 rounded-full flex items-center justify-center mx-auto mb-6 border-2 border-green-600 p-4">
+                                <img src="https://deliveryhanwa.wordpress.com/wp-content/uploads/2025/11/logo-hanwa-2.png" class="w-full h-full object-contain">
                             </div>
-                            <h2 class="text-3xl font-bold text-white mb-4">Body Side Panel Outer (Point H)</h2>
-                            <p class="text-gray-400 mb-8 max-w-lg mx-auto">
-                                Ini adalah halaman detail untuk bagian yang Anda klik pada ilustrasi Xenia.
-                                Di sini Anda dapat menampilkan spesifikasi teknis material Hanwa yang digunakan pada bagian ini.
-                            </p>
-                            <button onclick="navigate('ilustrasi', 'OTOMOTIF')" class="px-6 py-3 bg-gray-700 hover:bg-gray-600 rounded-lg text-white font-bold transition">
+                            <h2 class="text-3xl font-bold text-white mb-2">${title}</h2>
+                            <p class="text-green-500 font-mono mb-6 text-sm">PART ID: ${partId.toUpperCase()}</p>
+                            
+                            <div class="bg-gray-900/50 p-6 rounded-xl text-left max-w-lg mx-auto mb-8 border border-gray-700">
+                                <h4 class="text-gray-400 text-xs uppercase font-bold mb-3 border-b border-gray-700 pb-2">Material Specification Recommendation</h4>
+                                <ul class="space-y-2 text-sm text-gray-300">
+                                    <li class="flex justify-between"><span>Grade:</span> <span class="font-bold text-white">SPCC / SCGA / HSS</span></li>
+                                    <li class="flex justify-between"><span>Thickness:</span> <span class="font-bold text-white">0.6mm - 1.2mm</span></li>
+                                    <li class="flex justify-between"><span>Coating:</span> <span class="font-bold text-white">Oil / Galvannealed</span></li>
+                                    <li class="flex justify-between"><span>Origin:</span> <span class="font-bold text-white">Japan / Local Premium</span></li>
+                                </ul>
+                            </div>
+
+                            <button onclick="navigate('ilustrasi', 'OTOMOTIF')" class="px-8 py-3 bg-green-700 hover:bg-green-600 rounded-lg text-white font-bold transition shadow-lg flex items-center justify-center mx-auto gap-2">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
                                 Kembali ke Ilustrasi
                             </button>
                         </div>

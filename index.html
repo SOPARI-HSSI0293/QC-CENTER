@@ -535,7 +535,7 @@
             `).join('');
         }
 
-        // --- HALAMAN 4: ILUSTRASI PENGGUNAAN ---
+        // --- HALAMAN 4: ILUSTRASI PENGGUNAAN (MODIFIKASI) ---
         async function renderIlustrasi(filterCategory) {
             const title = filterCategory ? `Ilustrasi: ${filterCategory}` : 'Ilustrasi Customer';
             const interactiveBlock = (filterCategory === 'OTOMOTIF') ? `
@@ -544,10 +544,14 @@
                         <span class="mr-2">🚘</span> Interactive Part View: Daihatsu Xenia
                     </h3>
                     <div class="relative w-full max-w-4xl mx-auto overflow-hidden rounded-lg group">
-                        <!-- Gambar Background Cutaway -->
-                        <img src="https://astra-daihatsu.id/images/daihatsu-xenia.png" alt="Daihatsu Xenia" class="w-full h-auto object-contain bg-gray-900/50">
+                        <!-- Gambar Background: Update URL sesuai request -->
+                        <img src="https://deliveryhanwa.wordpress.com/wp-content/uploads/2025/11/cutway-car-daihatsu-xenia.png" 
+                             alt="Daihatsu Xenia Cutaway" 
+                             class="w-full h-auto object-contain bg-gray-900/50"
+                             onerror="this.src='https://via.placeholder.com/800x400?text=Gambar+Mobil+Tidak+Tersedia'">
                         
                         <!-- Hotspot Button "H" -->
+                        <!-- Posisi disesuaikan kembali untuk gambar Cutaway (Samping) -->
                         <button onclick="navigate('part-detail', 'xenia-body-part')" 
                             class="absolute top-[45%] left-[65%] w-10 h-10 bg-red-600 hover:bg-red-500 text-white rounded-full flex items-center justify-center font-bold text-lg shadow-lg hotspot-point border-2 border-white transition-transform hover:scale-110 z-10"
                             title="Klik untuk detail part ini">
